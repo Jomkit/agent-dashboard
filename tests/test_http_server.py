@@ -68,7 +68,7 @@ class TestDashboardServer(unittest.TestCase):
         cursor = IngestCursor(session_id="s1", dev=1, ino=1, byte_offset=100, last_sequence_num=2)
         cls.store.commit_ingest_batch(cls.test_session, events, cursor)
 
-        web_dir = Path(__file__).resolve().parent.parent / "tracker" / "web"
+        web_dir = Path(__file__).resolve().parent.parent / "tracker" / "interfaces" / "web"
         cls.server = DashboardServer(
             host="127.0.0.1",
             port=0,

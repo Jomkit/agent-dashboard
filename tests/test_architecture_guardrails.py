@@ -59,12 +59,14 @@ class TestArchitectureGuardrails(unittest.TestCase):
     def test_hexagonal_boundary_domain_and_ports(self):
         """Ensures tracker/domain/ and tracker/ports/ never import storage, web, or adapters."""
         forbidden_in_domain_ports = {
-            "sqlite3", "http", "socket", "urllib", "tracker.adapters", "tracker.app"
+            "sqlite3", "http", "socket", "urllib", "tracker.adapters", "tracker.app", "tracker.interfaces"
         }
 
-        domain_and_port_files = list((self.tracker_dir / "domain").rglob("*.py")) + list(
-            (self.tracker_dir / "ports").rglob("*.py")
-        )
+        domain_files = list((self.tracker_dir / "domain").rglob("*.py"))
+        port_files = list((self.tracker_dir / "ports").rglob("*.py"))
+        self.assertGreater(len(domain_files), 0, "Domain files must not be empty")
+        self.assertGreater(len(port_files), 0, "Port files must not be empty")
+        domain_and_port_files = domain_files + port_files
 
         for py_file in domain_and_port_files:
             with open(py_file, "r", encoding="utf-8") as f:
@@ -75,7 +77,16 @@ class TestArchitectureGuardrails(unittest.TestCase):
                 if isinstance(node, ast.Import):
                     imported_names.extend(alias.name for alias in node.names)
                 elif isinstance(node, ast.ImportFrom):
-                    if node.module:
+                    if node.level and node.level >= 2:
+                        # Relative import crossing out of domain/ports
+                        mod = node.module or ""
+                        if not mod:
+                            imported_names.extend(f"tracker.{alias.name}" for alias in node.names)
+                        else:
+                            imported_names.append(f"tracker.{mod}")
+                    elif node.module == "tracker":
+                        imported_names.extend(f"tracker.{alias.name}" for alias in node.names)
+                    elif node.module:
                         imported_names.append(node.module)
 
                 for name in imported_names:
@@ -86,17 +97,17 @@ class TestArchitectureGuardrails(unittest.TestCase):
                             )
 
     def test_web_budget_and_no_external_cdns(self):
-        """Ensures tracker/web has zero external URLs and uncompressed size is under 30KB."""
-        web_dir = self.tracker_dir / "web"
-        if not web_dir.exists():
-            return
+        """Ensures tracker/interfaces/web has zero external URLs and uncompressed size is under 30KB."""
+        web_dir = self.tracker_dir / "interfaces" / "web"
+        self.assertTrue(web_dir.is_dir(), f"Expected migrated web interface at {web_dir}")
+        self.assertFalse((self.tracker_dir / "web").exists(), "Legacy tracker/web directory must be removed after migration")
 
         total_bytes = 0
         for root, _, files in os.walk(web_dir):
             for file in files:
                 file_path = Path(root) / file
-                total_bytes += file_path.stat().st_size
-                if file.endswith((".html", ".js", ".css")):
+                if file_path.suffix.lower() in (".html", ".css", ".js", ".mjs", ".svg", ".png", ".ico"):
+                    total_bytes += file_path.stat().st_size
                     with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                         content = f.read()
                         self.assertNotIn("http://", content, f"External CDN / URL found in {file_path}")
