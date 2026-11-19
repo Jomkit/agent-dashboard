@@ -5,7 +5,7 @@ import unittest
 class TestWebUIContracts(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.web_dir = Path(__file__).resolve().parent.parent / "tracker" / "web"
+        cls.web_dir = Path(__file__).resolve().parent.parent / "tracker" / "interfaces" / "web"
         cls.js_dir = cls.web_dir / "static" / "js"
 
     def test_web_files_exist(self):
@@ -22,8 +22,14 @@ class TestWebUIContracts(unittest.TestCase):
             self.assertTrue(f.is_file(), f"Required web file missing: {f}")
 
     def test_security_no_inner_html_or_eval(self):
-        forbidden_patterns = [".innerHTML", "eval(", "document.write(", "setTimeout(", "setInterval("]
-        for js_file in self.js_dir.rglob("*.js"):
+        forbidden_patterns = [
+            ".innerHTML", ".outerHTML", "insertAdjacentHTML(",
+            "eval(", "new Function(", "document.write(",
+            "setTimeout(", "setInterval(",
+        ]
+        js_files = list(self.js_dir.rglob("*.js")) + list(self.js_dir.rglob("*.mjs"))
+        self.assertGreater(len(js_files), 0, "No JavaScript files found to verify")
+        for js_file in js_files:
             content = js_file.read_text(encoding="utf-8")
             for pattern in forbidden_patterns:
                 self.assertNotIn(
@@ -35,13 +41,13 @@ class TestWebUIContracts(unittest.TestCase):
     def test_security_uses_text_content(self):
         for component_name in ["session-list.js", "transcript-view.js"]:
             comp_file = self.js_dir / "components" / component_name
-            if comp_file.is_file():
-                content = comp_file.read_text(encoding="utf-8")
-                self.assertIn(
-                    "textContent",
-                    content,
-                    f"Component {component_name} must use textContent for safe text insertion",
-                )
+            self.assertTrue(comp_file.is_file(), f"Component file missing: {comp_file}")
+            content = comp_file.read_text(encoding="utf-8")
+            self.assertIn(
+                "textContent",
+                content,
+                f"Component {component_name} must use textContent for safe text insertion",
+            )
 
     def test_web_payload_budget(self):
         total_bytes = 0
